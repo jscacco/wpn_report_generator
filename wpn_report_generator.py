@@ -4,7 +4,7 @@ import pickle
 
 def read_wotc_skus():
     """Reads in the dict of wpn skus."""
-
+    
     # I hate how gross and hacky this is, but I only want to read from this
     # file once the entire time, while also being able to consult new SKUS
     # entered for other transactions.
@@ -283,18 +283,14 @@ def remove_commas(this_str):
     
 def main():
 
-    line_report_filename = "files/dg_0721_reports_sales_listings_transaction_line.xlsx"
-    wpn_report_filename = "files/35657_FairGameDownersGrove_POSData_0721.xlsx"
-    store = "DG"
+    line_report_filename = "files/lg_0321_reports_sales_listings_transaction_line.xlsx"
+    wpn_report_filename = "files/40658_FairGameLaGrange_POSData_0321.xlsx"
+    store = "LG"
 
     print("Working... (This will take a few minutes)")
     fill_wpn_report(store, line_report_filename, wpn_report_filename)
     add_new_skus()
-                       
-    # this_transaction = Transaction("DG")
-    # this_transaction.getInfoAndFormat(line_report_filename, 2)
-    # set_wotc_sku(this_transaction)
-    # print(this_transaction)
+
     
 if __name__ == "__main__":
     main()
