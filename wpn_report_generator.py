@@ -1,25 +1,14 @@
 import openpyxl
 import datetime
 import pickle
-
-def read_wotc_skus():
-    """Reads in the dict of wpn skus."""
-    
-    # I hate how gross and hacky this is, but I only want to read from this
-    # file once the entire time, while also being able to consult new SKUS
-    # entered for other transactions.
-        
-    # https://www.geeksforgeeks.org/how-to-read-dictionary-from-file-in-python/
-    with open(DICT_FILENAME, 'rb') as handle:
-        data = handle.read()
-    return pickle.loads(data)
-
+import sys
+import getopt
 
 LG_ORG_ID = 40658
 DG_ORG_ID = 35657
 CURRENCY = "USD"
 DICT_FILENAME = "files/wotc_sku_dict.txt"
-WOTC_SKUS = read_wotc_skus()
+WOTC_SKUS = {}
 NEW_SKUS = {}
 
 class Transaction:
@@ -280,17 +269,80 @@ def remove_commas(this_str):
             new_str += char
     return new_str
         
+
+def read_wotc_skus():
+    """Reads in the dict of wpn skus."""
     
-def main():
+    # https://www.geeksforgeeks.org/how-to-read-dictionary-from-file-in-python/
+    with open(DICT_FILENAME, 'rb') as handle:
+        data = handle.read()
+    return pickle.loads(data)
 
-    line_report_filename = "files/lg_0321_reports_sales_listings_transaction_line.xlsx"
-    wpn_report_filename = "files/40658_FairGameLaGrange_POSData_0321.xlsx"
-    store = "LG"
 
+def generate_report(line_report_filename, wpn_report_filename, store):
+    """The bulk of the program, generate a new report."""
+    
+    # line_report_filename = "files/lg_0321_reports_sales_listings_transaction_line.xlsx"
+    # wpn_report_filename = "files/40658_FairGameLaGrange_POSData_0321.xlsx"
+    # store = "LG"
+
+    WOTC_SKUS = read_wotc_skus()
     print("Working... (This will take a few minutes)")
     fill_wpn_report(store, line_report_filename, wpn_report_filename)
     add_new_skus()
 
+
+def print_help_info():
+    """Show how to use the program."""
+    
+    print("\nGeneral usage (for report generation):")
+    print("\twpn_report_generator.py -l <line report filename> -w <wpn report filename> -s <store (DG or LG)>")
+    print("\nAll parameters:")
+    print("\t--line=<line report filename>")
+    print("\t--wpn=<wpn report filename>")
+    print("\t--store=<store (DG or LG)>")
+    print("\t--replace=<True if replacing a WotC SKU>")
+    print("\t(or simply use the flag -r)")
+    print("\t--delete=<True if deleting a WotC SKU>")
+    print("\t(or simply use the flag -d)")
+    print("\t--lookup=<True if looking up a WotC SKU>")
+    print("\t(or simply use the flag -l)")
+    
+        
+def main():
+    line_report_filename = ''
+    wpn_report_filename = ''
+    store = ''
+    
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hl:w:s:rdo", ["line=", "wpn=", "store=", "replace=", "delete=", "lookup="])
+    except:
+        print_help_info()
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt == '-h':
+            print_help_info()
+            sys.exit()
+        elif opt == ['-r', '--replace']:
+            print("REPLACING")
+            sys.exit()
+        elif opt == ['-d', '--delete']:
+            print("DELETING")
+            sys.exit()
+        elif opt == ['-o','--lookup']:
+            print("LOOKING UP")
+            sys.exit()
+        elif opt in ['-l', '--line']:
+            line_report_filename = arg
+        elif opt in ['-w', '--wpn']:
+            wpn_report_filename = arg
+        elif opt in ['-s', '--store']:
+            store = arg
+
+    print("line_report_filename: " + line_report_filename)
+    print("wpn_report_filename: " + wpn_report_filename)
+    print("store: " + store)
     
 if __name__ == "__main__":
     main()
