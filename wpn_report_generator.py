@@ -3,12 +3,13 @@ import datetime
 import pickle
 import sys
 import getopt
+import math
+import time
 
 LG_ORG_ID = 40658
 DG_ORG_ID = 35657
 CURRENCY = "USD"
 DICT_FILENAME = "files/wotc_sku_dict.txt"
-WOTC_SKUS = {}
 NEW_SKUS = {}
 
 class Transaction:
@@ -98,7 +99,7 @@ class Transaction:
             
             
     def adjustFormatPrices(self):
-        """If self.unit_price is a string, convert it to a datetime object.
+        """If self.unit_price is a string, convert it to a number.
            Same for self.total_sale_price."""
         
         if type(self.unit_price) == type('str'):
@@ -122,10 +123,15 @@ class Transaction:
         # the report. This includes trade ins, admission fees, singles,
         # transaction with a total sale value not greater than zero,
         # and transactions made using the house account.
+
+        # NOTE: this will also filter out any product which has the below keywords in
+        # its name. I don't think there are any WotC products which contain those
+        # keywords, but it's worth mentioning in case that changes.
         
         desc = self.fg_product_desc.lower()
         return not (desc.__contains__("trade in") or \
                     desc.__contains__("admission") or \
+                    desc.__contains__("venue") or \
                     desc.__contains__("single") or \
                     self.quantity_sold < 0)
                     
@@ -140,22 +146,31 @@ class Transaction:
         for c in range(1, sheet.max_column + 1):
             this_cell = sheet.cell(row=r, column=c)
             if c == 1:
+                # WPN id
                 this_cell.value = self.wpn_org_id
             elif c == 2:
+                # Date
                 this_cell.value = self.date
             elif c == 4:
+                # Transaction ID
                 this_cell.value = self.transaction_id
             elif c == 6:
+                # WotC SKU
                 this_cell.value = self.wotc_sku
             elif c == 9:
+                # Product Desc.
                 this_cell.value = self.fg_product_desc
             elif c == 10:
+                # Quantity Sold
                 this_cell.value = self.quantity_sold
             elif c == 11:
+                # Unit Price
                 this_cell.value = self.unit_price
             elif c == 12:
+                # Total Sale Price
                 this_cell.value = self.total_sale_price
             elif c == 13:
+                # Currency
                 this_cell.value = self.currency
 
         wb.save(wpn_report_filename)
@@ -182,7 +197,7 @@ def get_line_report_col_descs(line_report_filename):
     return col_descs
     
 
-def fill_wpn_report(store, line_report_filename, wpn_report_filename):
+def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus):
     """Put it all together."""
     wb = openpyxl.load_workbook(line_report_filename)
     sheet = wb[wb.sheetnames[0]]
@@ -196,7 +211,7 @@ def fill_wpn_report(store, line_report_filename, wpn_report_filename):
         this_transaction.getInfoAndFormat(line_report_filename, current_line_row)
         current_line_row += 1
         if this_transaction.isValidTransaction():
-            set_wotc_sku(this_transaction)
+            set_wotc_sku(this_transaction, wotc_skus)
             this_transaction.enterIntoWpnReport(wpn_report_filename,current_wpn_row)
             current_wpn_row += 1
 
@@ -225,15 +240,18 @@ def pickled_dict_setup(filenames):
     file.close()
     
     
-def set_wotc_sku(transaction):
+def set_wotc_sku(transaction, wotc_skus):
     """Gets and sets the wotc sku for the item."""
-
+    
     if transaction.fg_product_desc == None:
-        # I don't think this would ever trigger, but adding it just in case.
+        # If there is not description...
+        # (I don't think this would ever trigger, but adding it just in case.)
         print("\n\n\n!Error! Transaction has no product description.\n\n")
-    elif transaction.fg_product_desc in WOTC_SKUS:
-        transaction.wotc_sku = WOTC_SKUS[transaction.fg_product_desc]
+    elif transaction.fg_product_desc in wotc_skus:
+        # If the SKU is already in our dictionary...
+        transaction.wotc_sku = wotc_skus[transaction.fg_product_desc]
     elif transaction.fg_product_desc in NEW_SKUS:
+        # If the SKU is new, but we've already seen it this session...
         transaction.wotc_sku = NEW_SKUS[transaction.fg_product_desc]
     else:
         # We need to input the SKU and add it in.
@@ -246,15 +264,15 @@ def set_wotc_sku(transaction):
                                  "? (Enter nothing if correct, S to skip, and any other button to re-enter the SKU)")
 
         if confirmation.lower() == 's':
-                new_sku = "SKIPPED"
+            new_sku = "SKIPPED"
         NEW_SKUS[transaction.fg_product_desc] = new_sku
         transaction.wotc_sku = new_sku
         print("Working...")
         
 
-def add_new_skus():
+def add_new_skus(wotc_skus):
     """Adds the SKUS in NEW_SKUS to the dict file."""
-    updated_skus = WOTC_SKUS
+    updated_skus = wotc_skus
     updated_skus.update(NEW_SKUS)
     file = open(DICT_FILENAME, 'wb')
     pickle.dump(updated_skus, file)
@@ -279,6 +297,19 @@ def read_wotc_skus():
     return pickle.loads(data)
 
 
+def seconds_to_formatted_time(seconds):
+    """Given a number representing a length of time in seconds, return a string which
+       formats the time into a more readable format."""
+
+    seconds = int(seconds)
+    
+    h = math.floor(seconds / 3600)
+    m = math.floor((seconds / 60) % 60)
+    s = math.floor(seconds % 60)
+    
+    return "{h}h, {m}min, {s}sec".format(h=h, m=m, s=s)
+
+    
 def generate_report(line_report_filename, wpn_report_filename, store):
     """The bulk of the program, generate a new report."""
     
@@ -286,10 +317,17 @@ def generate_report(line_report_filename, wpn_report_filename, store):
     # wpn_report_filename = "files/40658_FairGameLaGrange_POSData_0321.xlsx"
     # store = "LG"
 
-    WOTC_SKUS = read_wotc_skus()
+    # let's keep track of how long this takes
+    start = time.time()
+    wotc_skus = read_wotc_skus()
+    
     print("Working... (This will take a few minutes)")
-    fill_wpn_report(store, line_report_filename, wpn_report_filename)
-    add_new_skus()
+    fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus)
+    add_new_skus(wotc_skus)
+
+    end = time.time()
+    
+    print("Finished! Time elapsed: " + seconds_to_formatted_time(end - start))
 
 
 def print_help_info():
@@ -301,37 +339,79 @@ def print_help_info():
     print("\t--line=<line report filename>")
     print("\t--wpn=<wpn report filename>")
     print("\t--store=<store (DG or LG)>")
-    print("\t--replace=<True if replacing a WotC SKU>")
-    print("\t(or simply use the flag -r)")
-    print("\t--delete=<True if deleting a WotC SKU>")
-    print("\t(or simply use the flag -d)")
-    print("\t--lookup=<True if looking up a WotC SKU>")
-    print("\t(or simply use the flag -l)")
+    print("\t-u (if replacing a WotC SKU)")
+    print("\t-o (if looking up a WotC SKU)")
     
+
+def lookup_sku():
+    """Looks up a sku."""
+    # Get the name of the item to be updated from the user and display the current SKU
+    wotc_skus = read_wotc_skus()
         
+    desc = input("Please enter the name of the item whose SKU you would like to lookup:\n")
+    try:
+        current_sku = wotc_skus[desc]
+    except KeyError:
+        print("No item found with that description")
+        return
+
+    print("The current SKU for " + desc + " is: " + str(current_sku) + ".")
+
+    
+def update_sku():
+    """Update an item's SKU."""
+    wotc_skus = read_wotc_skus()
+        
+    desc = input("Please enter the name of the item whose SKU you would like to update:\n")
+    try:
+        current_sku = wotc_skus[desc]
+    except KeyError:
+        print("No item found with that description")
+        return
+
+    print("The current SKU for " + desc + " is: " + str(current_sku) + ".")
+    
+    # Get the new SKU from the user
+    confirm = 'n'
+    while confirm not in ['y', '', 'yes']:
+        new_sku = input("Please enter the new SKU:\n")
+        confirm = input("Is " + str(new_sku) + " correct? (Enter 'y', 'yes', or nothing to confirm. Enter any other key to resubmit.")
+
+    # Update the SKU dict
+    wotc_skus[desc] = new_sku
+    file = open(DICT_FILENAME, 'wb')
+    pickle.dump(wotc_skus, file)
+    file.close()
+    
+
 def main():
     line_report_filename = ''
     wpn_report_filename = ''
     store = ''
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hl:w:s:rdo", ["line=", "wpn=", "store=", "replace=", "delete=", "lookup="])
+        opts, args = getopt.getopt(sys.argv[1:], "hl:w:s:uo", ["line=", "wpn=", "store="])
     except:
         print_help_info()
         sys.exit(2)
 
+    # If there are no arguments, print the help and exit
+    if len(opts) == 0:
+        print("HERE")
+        print(opts)
+        print_help_info()
+        sys.exit(2)
+
+    # Otherwise, determine functionality based on arguments provided
     for opt, arg in opts:
         if opt == '-h':
             print_help_info()
             sys.exit()
-        elif opt == ['-r', '--replace']:
-            print("REPLACING")
+        elif opt == '-u':
+            update_sku()
             sys.exit()
-        elif opt == ['-d', '--delete']:
-            print("DELETING")
-            sys.exit()
-        elif opt == ['-o','--lookup']:
-            print("LOOKING UP")
+        elif opt == '-o':
+            lookup_sku()
             sys.exit()
         elif opt in ['-l', '--line']:
             line_report_filename = arg
@@ -340,9 +420,14 @@ def main():
         elif opt in ['-s', '--store']:
             store = arg
 
-    print("line_report_filename: " + line_report_filename)
-    print("wpn_report_filename: " + wpn_report_filename)
-    print("store: " + store)
+    # If we are generating a report and don't have the three arguments we need,
+    # inform the user that they need to provide them and exit.
+    if line_report_filename == '' or wpn_report_filename == '' or store == '':
+        print("Please include a line report filename, wpn report filename, and store.")
+        sys.exit(2)
+
+    generate_report(line_report_filename, wpn_report_filename, store)
+
     
 if __name__ == "__main__":
     main()
