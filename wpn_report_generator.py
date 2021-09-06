@@ -131,6 +131,8 @@ class Transaction:
         desc = self.fg_product_desc.lower()
         return not (desc.__contains__("trade in") or \
                     desc.__contains__("admission") or \
+                    desc.__contains__("draft fnm") or \
+                    desc.__contains__("booster league") or \
                     desc.__contains__("venue") or \
                     desc.__contains__("single") or \
                     self.quantity_sold < 0)
