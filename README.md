@@ -4,4 +4,4 @@ This program automates the generation of monthly WPN Premium reports using raw L
 
 Please refer to wpn_report_generator.py for the program itself. 
 files/wotc_sku_dict.txt contains product information needed to fill out each report. 
-A blank version of these reports can be found in files/ as well.
+A blank version of these reports can be found at files/FairGame_POSData_TEMPLATE.xlsx.
