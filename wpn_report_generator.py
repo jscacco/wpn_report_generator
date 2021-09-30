@@ -9,8 +9,12 @@ import time
 LG_ORG_ID = 40658
 DG_ORG_ID = 35657
 CURRENCY = "USD"
+
 DICT_FILENAME = "files/wotc_sku_dict.txt"
 NEW_SKUS = {}
+
+DESC_COL_NUM = 3
+QTY_COL_NUM = 4
 
 class Transaction:
     def __init__(self, store):
@@ -116,8 +120,9 @@ class Transaction:
         self.adjustFormatPrices()
 
         
+    """
     def isValidTransaction(self):
-        """Returns True if the transaction should be added to the report."""
+        #Returns True if the transaction should be added to the report.
 
         # Basically, this catches all the transactions we don't want to add into
         # the report. This includes trade ins, admission fees, singles,
@@ -136,7 +141,7 @@ class Transaction:
                     desc.__contains__("venue") or \
                     desc.__contains__("single") or \
                     self.quantity_sold < 0)
-                    
+    """                
     
     def enterIntoWpnReport(self, wpn_report_filename, r):
         """Enter the values of the transaction into the WPN filename."""
@@ -199,8 +204,9 @@ def get_line_report_col_descs(line_report_filename):
     return col_descs
     
 
+"""
 def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus):
-    """Put it all together."""
+    #Put it all together.
     wb = openpyxl.load_workbook(line_report_filename)
     sheet = wb[wb.sheetnames[0]]
     num_entries = sheet.max_row - 1
@@ -216,6 +222,44 @@ def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus)
             set_wotc_sku(this_transaction, wotc_skus)
             this_transaction.enterIntoWpnReport(wpn_report_filename,current_wpn_row)
             current_wpn_row += 1
+"""
+
+def isValidTransaction(line_report_filename, line_row):
+    """Given a row in the line report, return true if that row contains a valid
+       transaction."""
+
+    wb = openpyxl.load_workbook(line_report_filename)
+    sheet = wb[wb.sheetnames[0]]
+    
+    desc = sheet.cell(row=line_row, column=DESC_COL_NUM).value.lower()
+    quantity_sold = sheet.cell(row=line_row, column=QTY_COL_NUM).value
+    
+    return not (desc.__contains__("trade in") or \
+                desc.__contains__("admission") or \
+                desc.__contains__("draft fnm") or \
+                desc.__contains__("booster league") or \
+                desc.__contains__("venue") or \
+                desc.__contains__("single") or \
+                quantity_sold < 0)
+    
+
+def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus):
+    """Put it all together."""
+    wb = openpyxl.load_workbook(line_report_filename)
+    sheet = wb[wb.sheetnames[0]]
+    num_entries = sheet.max_row - 1
+
+    current_line_row = 2
+    current_wpn_row = 5
+
+    while current_line_row <= num_entries:
+        if isValidTransaction(line_report_filename, current_line_row):
+            this_transaction = Transaction(store)
+            this_transaction.getInfoAndFormat(line_report_filename, current_line_row)
+            set_wotc_sku(this_transaction, wotc_skus)
+            this_transaction.enterIntoWpnReport(wpn_report_filename, current_wpn_row)
+            current_wpn_row += 1
+        current_line_row += 1
 
 
 def pickled_dict_setup(filenames):
