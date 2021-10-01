@@ -67,32 +67,18 @@ class Transaction:
         # Open the line report
         wb = openpyxl.load_workbook(line_report_filename)
         sheet = wb[wb.sheetnames[0]]
+
+        self.transaction_id = sheet.cell(row=r, column=1).value
+        self.date = sheet.cell(row=r, column=2).value
+        self.fg_product_desc = sheet.cell(row=r, column=3).value
+        self.quantity_sold = sheet.cell(row=r, column=4).value
+        self.unit_price = sheet.cell(row=r, column=5).value
+        self.total_sale_price = sheet.cell(row=r, column=6).value
+        self.customere = sheet.cell(row=r, column=10).value
+
+        wb.close()
+
         
-        for c in range(1, sheet.max_column + 1):
-            this_value = sheet.cell(row=r, column=c).value
-            
-            if c == 1:
-                # ID
-                self.transaction_id = this_value
-            elif c == 2:
-                # Date
-                self.date = this_value
-            elif c == 3:
-                # Description
-                self.fg_product_desc = this_value
-            elif c == 4:
-                # Qty
-                self.quantity_sold = this_value
-            elif c == 5:
-                # Retail (unit price)
-                self.unit_price = this_value
-            elif c == 6:
-                # Subtotal
-                self.total_sale_price = this_value
-            elif c == 10:
-                self.customer = this_value
-                
-                
     def adjustFormatDate(self):
         """If self.date is a string, convert it to a datetime object."""
         if type(self.date) == type('str'):
@@ -120,29 +106,6 @@ class Transaction:
         self.adjustFormatPrices()
 
         
-    """
-    def isValidTransaction(self):
-        #Returns True if the transaction should be added to the report.
-
-        # Basically, this catches all the transactions we don't want to add into
-        # the report. This includes trade ins, admission fees, singles,
-        # transaction with a total sale value not greater than zero,
-        # and transactions made using the house account.
-
-        # NOTE: this will also filter out any product which has the below keywords in
-        # its name. I don't think there are any WotC products which contain those
-        # keywords, but it's worth mentioning in case that changes.
-        
-        desc = self.fg_product_desc.lower()
-        return not (desc.__contains__("trade in") or \
-                    desc.__contains__("admission") or \
-                    desc.__contains__("draft fnm") or \
-                    desc.__contains__("booster league") or \
-                    desc.__contains__("venue") or \
-                    desc.__contains__("single") or \
-                    self.quantity_sold < 0)
-    """                
-    
     def enterIntoWpnReport(self, wpn_report_filename, r):
         """Enter the values of the transaction into the WPN filename."""
 
@@ -150,38 +113,18 @@ class Transaction:
         wb = openpyxl.load_workbook(wpn_report_filename)
         sheet = wb[wb.sheetnames[0]]
 
-        for c in range(1, sheet.max_column + 1):
-            this_cell = sheet.cell(row=r, column=c)
-            if c == 1:
-                # WPN id
-                this_cell.value = self.wpn_org_id
-            elif c == 2:
-                # Date
-                this_cell.value = self.date
-            elif c == 4:
-                # Transaction ID
-                this_cell.value = self.transaction_id
-            elif c == 6:
-                # WotC SKU
-                this_cell.value = self.wotc_sku
-            elif c == 9:
-                # Product Desc.
-                this_cell.value = self.fg_product_desc
-            elif c == 10:
-                # Quantity Sold
-                this_cell.value = self.quantity_sold
-            elif c == 11:
-                # Unit Price
-                this_cell.value = self.unit_price
-            elif c == 12:
-                # Total Sale Price
-                this_cell.value = self.total_sale_price
-            elif c == 13:
-                # Currency
-                this_cell.value = self.currency
+        sheet.cell(row=r, column=1).value = self.wpn_org_id
+        sheet.cell(row=r, column=2).value = self.date
+        sheet.cell(row=r, column=4).value = self.transaction_id
+        sheet.cell(row=r, column=6).value = self.wotc_sku
+        sheet.cell(row=r, column=9).value = self.fg_product_desc
+        sheet.cell(row=r, column=10).value = self.quantity_sold
+        sheet.cell(row=r, column=11).value = self.unit_price
+        sheet.cell(row=r, column=12).value = self.total_sale_price
+        sheet.cell(row=r, column=13).value = self.currency
 
         wb.save(wpn_report_filename)
-
+        wb.close()
         
         
 def get_line_report_col_descs(line_report_filename):
@@ -200,29 +143,11 @@ def get_line_report_col_descs(line_report_filename):
     for c in range(1, sheet.max_column + 1):
         col_descs.append(sheet.cell(row=1, column=c).value)
 
+    wb.close()
+    
     # Return the list of descs
     return col_descs
     
-
-"""
-def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus):
-    #Put it all together.
-    wb = openpyxl.load_workbook(line_report_filename)
-    sheet = wb[wb.sheetnames[0]]
-    num_entries = sheet.max_row - 1
-
-    current_line_row = 2
-    current_wpn_row = 5
-
-    while current_line_row <= num_entries:
-        this_transaction = Transaction(store)
-        this_transaction.getInfoAndFormat(line_report_filename, current_line_row)
-        current_line_row += 1
-        if this_transaction.isValidTransaction():
-            set_wotc_sku(this_transaction, wotc_skus)
-            this_transaction.enterIntoWpnReport(wpn_report_filename,current_wpn_row)
-            current_wpn_row += 1
-"""
 
 def isValidTransaction(line_report_filename, line_row):
     """Given a row in the line report, return true if that row contains a valid
@@ -233,6 +158,8 @@ def isValidTransaction(line_report_filename, line_row):
     
     desc = sheet.cell(row=line_row, column=DESC_COL_NUM).value.lower()
     quantity_sold = sheet.cell(row=line_row, column=QTY_COL_NUM).value
+    
+    wb.close()
     
     return not (desc.__contains__("trade in") or \
                 desc.__contains__("admission") or \
@@ -261,6 +188,8 @@ def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus)
             current_wpn_row += 1
         current_line_row += 1
 
+    wb.close()
+
 
 def pickled_dict_setup(filenames):
     """Setup for the wpn SKU dict given a list of previous WPN reports.
@@ -280,6 +209,8 @@ def pickled_dict_setup(filenames):
             this_fg_desc = sheet.cell(row=r, column=9).value
             if this_fg_desc not in this_dict:
                 this_dict[this_fg_desc] = sheet.cell(row=r, column=6).value
+
+        wb.close()
 
     file = open(DICT_FILENAME, 'wb')
     pickle.dump(this_dict, file)
