@@ -9,8 +9,13 @@ import time
 LG_ORG_ID = 40658
 DG_ORG_ID = 35657
 CURRENCY = "USD"
+
 DICT_FILENAME = "files/wotc_sku_dict.txt"
+ARR_FILENAME = "files/filter_keywords_array.txt"
 NEW_SKUS = {}
+
+DESC_COL_NUM = 3
+QTY_COL_NUM = 4
 
 class Transaction:
     def __init__(self, store):
@@ -63,32 +68,18 @@ class Transaction:
         # Open the line report
         wb = openpyxl.load_workbook(line_report_filename)
         sheet = wb[wb.sheetnames[0]]
+
+        self.transaction_id = sheet.cell(row=r, column=1).value
+        self.date = sheet.cell(row=r, column=2).value
+        self.fg_product_desc = sheet.cell(row=r, column=3).value
+        self.quantity_sold = sheet.cell(row=r, column=4).value
+        self.unit_price = sheet.cell(row=r, column=5).value
+        self.total_sale_price = sheet.cell(row=r, column=6).value
+        self.customere = sheet.cell(row=r, column=10).value
+
+        wb.close()
+
         
-        for c in range(1, sheet.max_column + 1):
-            this_value = sheet.cell(row=r, column=c).value
-            
-            if c == 1:
-                # ID
-                self.transaction_id = this_value
-            elif c == 2:
-                # Date
-                self.date = this_value
-            elif c == 3:
-                # Description
-                self.fg_product_desc = this_value
-            elif c == 4:
-                # Qty
-                self.quantity_sold = this_value
-            elif c == 5:
-                # Retail (unit price)
-                self.unit_price = this_value
-            elif c == 6:
-                # Subtotal
-                self.total_sale_price = this_value
-            elif c == 10:
-                self.customer = this_value
-                
-                
     def adjustFormatDate(self):
         """If self.date is a string, convert it to a datetime object."""
         if type(self.date) == type('str'):
@@ -116,28 +107,6 @@ class Transaction:
         self.adjustFormatPrices()
 
         
-    def isValidTransaction(self):
-        """Returns True if the transaction should be added to the report."""
-
-        # Basically, this catches all the transactions we don't want to add into
-        # the report. This includes trade ins, admission fees, singles,
-        # transaction with a total sale value not greater than zero,
-        # and transactions made using the house account.
-
-        # NOTE: this will also filter out any product which has the below keywords in
-        # its name. I don't think there are any WotC products which contain those
-        # keywords, but it's worth mentioning in case that changes.
-        
-        desc = self.fg_product_desc.lower()
-        return not (desc.__contains__("trade in") or \
-                    desc.__contains__("admission") or \
-                    desc.__contains__("draft fnm") or \
-                    desc.__contains__("booster league") or \
-                    desc.__contains__("venue") or \
-                    desc.__contains__("single") or \
-                    self.quantity_sold < 0)
-                    
-    
     def enterIntoWpnReport(self, wpn_report_filename, r):
         """Enter the values of the transaction into the WPN filename."""
 
@@ -145,58 +114,42 @@ class Transaction:
         wb = openpyxl.load_workbook(wpn_report_filename)
         sheet = wb[wb.sheetnames[0]]
 
-        for c in range(1, sheet.max_column + 1):
-            this_cell = sheet.cell(row=r, column=c)
-            if c == 1:
-                # WPN id
-                this_cell.value = self.wpn_org_id
-            elif c == 2:
-                # Date
-                this_cell.value = self.date
-            elif c == 4:
-                # Transaction ID
-                this_cell.value = self.transaction_id
-            elif c == 6:
-                # WotC SKU
-                this_cell.value = self.wotc_sku
-            elif c == 9:
-                # Product Desc.
-                this_cell.value = self.fg_product_desc
-            elif c == 10:
-                # Quantity Sold
-                this_cell.value = self.quantity_sold
-            elif c == 11:
-                # Unit Price
-                this_cell.value = self.unit_price
-            elif c == 12:
-                # Total Sale Price
-                this_cell.value = self.total_sale_price
-            elif c == 13:
-                # Currency
-                this_cell.value = self.currency
+        sheet.cell(row=r, column=1).value = self.wpn_org_id
+        sheet.cell(row=r, column=2).value = self.date
+        sheet.cell(row=r, column=4).value = self.transaction_id
+        sheet.cell(row=r, column=6).value = self.wotc_sku
+        sheet.cell(row=r, column=9).value = self.fg_product_desc
+        sheet.cell(row=r, column=10).value = self.quantity_sold
+        sheet.cell(row=r, column=11).value = self.unit_price
+        sheet.cell(row=r, column=12).value = self.total_sale_price
+        sheet.cell(row=r, column=13).value = self.currency
 
         wb.save(wpn_report_filename)
+        wb.close()
 
-        
-        
-def get_line_report_col_descs(line_report_filename):
-    """Given a line report, return a list of the column descriptions.
-       Each description's column is equal to its index in the returned list.
-       (Note that this means the list will always have filler info at its head)
-       IMPORTANT: This assumes that the column descriptions will be in the first row.
-       Update 7/29: I don't think this function is necessary."""
 
-    # Open the line report
-    col_descs = [None]
+
+
+def is_valid_transaction(line_report_filename, line_row):
+    """Given a row in the line report, return true if that row contains a valid
+       transaction."""
+
     wb = openpyxl.load_workbook(line_report_filename)
     sheet = wb[wb.sheetnames[0]]
+    
+    desc = sheet.cell(row=line_row, column=DESC_COL_NUM).value.lower()
+    quantity_sold = sheet.cell(row=line_row, column=QTY_COL_NUM).value
+    
+    wb.close()
 
-    # Iterate through the first row, adding the column descriptions to the list
-    for c in range(1, sheet.max_column + 1):
-        col_descs.append(sheet.cell(row=1, column=c).value)
+    keywords = fetch_filter_keywords()
 
-    # Return the list of descs
-    return col_descs
+    valid = True
+    for k in keywords:
+        if desc.__contains__(k):
+            valid = False
+            
+    return valid and quantity_sold >= 0
     
 
 def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus):
@@ -209,13 +162,15 @@ def fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus)
     current_wpn_row = 5
 
     while current_line_row <= num_entries:
-        this_transaction = Transaction(store)
-        this_transaction.getInfoAndFormat(line_report_filename, current_line_row)
-        current_line_row += 1
-        if this_transaction.isValidTransaction():
+        if is_valid_transaction(line_report_filename, current_line_row):
+            this_transaction = Transaction(store)
+            this_transaction.getInfoAndFormat(line_report_filename, current_line_row)
             set_wotc_sku(this_transaction, wotc_skus)
-            this_transaction.enterIntoWpnReport(wpn_report_filename,current_wpn_row)
+            this_transaction.enterIntoWpnReport(wpn_report_filename, current_wpn_row)
             current_wpn_row += 1
+        current_line_row += 1
+
+    wb.close()
 
 
 def pickled_dict_setup(filenames):
@@ -237,11 +192,14 @@ def pickled_dict_setup(filenames):
             if this_fg_desc not in this_dict:
                 this_dict[this_fg_desc] = sheet.cell(row=r, column=6).value
 
+        wb.close()
+
     file = open(DICT_FILENAME, 'wb')
     pickle.dump(this_dict, file)
     file.close()
-    
-    
+
+
+        
 def set_wotc_sku(transaction, wotc_skus):
     """Gets and sets the wotc sku for the item."""
     
@@ -288,15 +246,6 @@ def remove_commas(this_str):
         if char != ',':
             new_str += char
     return new_str
-        
-
-def read_wotc_skus():
-    """Reads in the dict of wpn skus."""
-    
-    # https://www.geeksforgeeks.org/how-to-read-dictionary-from-file-in-python/
-    with open(DICT_FILENAME, 'rb') as handle:
-        data = handle.read()
-    return pickle.loads(data)
 
 
 def seconds_to_formatted_time(seconds):
@@ -315,13 +264,10 @@ def seconds_to_formatted_time(seconds):
 def generate_report(line_report_filename, wpn_report_filename, store):
     """The bulk of the program, generate a new report."""
     
-    # line_report_filename = "files/lg_0321_reports_sales_listings_transaction_line.xlsx"
-    # wpn_report_filename = "files/40658_FairGameLaGrange_POSData_0321.xlsx"
-    # store = "LG"
 
     # let's keep track of how long this takes
     start = time.time()
-    wotc_skus = read_wotc_skus()
+    wotc_skus = fetch_wotc_skus()
     
     print("Working... (This will take a few minutes)")
     fill_wpn_report(store, line_report_filename, wpn_report_filename, wotc_skus)
@@ -337,24 +283,40 @@ def print_help_info():
     
     print("\nGeneral usage (for report generation):")
     print("\twpn_report_generator.py -l <line report filename> -w <wpn report filename> -s <store (DG or LG)>")
-    print("\nAll parameters:")
-    print("\t--line=<line report filename>")
-    print("\t--wpn=<wpn report filename>")
-    print("\t--store=<store (DG or LG)>")
-    print("\t-u (if replacing a WotC SKU)")
-    print("\t-o (if looking up a WotC SKU)")
+    print("\nOther parameters:")
+    print("\t-u (to view/update/lookup WotC SKUs)")
+    print("\t-k (to view/add/delete filter keywords)")
     
 
+def fetch_wotc_skus():
+    """Reads in the dict of wpn skus."""
+    
+    # https://www.geeksforgeeks.org/how-to-read-dictionary-from-file-in-python/
+    with open(DICT_FILENAME, 'rb') as handle:
+        data = handle.read()
+    return pickle.loads(data)
+
+
+def display_wotc_skus():
+    """Prints out the filter keywords to the user."""
+
+    skus = fetch_wotc_skus()
+    i = 0
+    for key in skus:
+        print(i, key, skus[key])
+        i += 1
+
+        
 def lookup_sku():
     """Looks up a sku."""
     # Get the name of the item to be updated from the user and display the current SKU
-    wotc_skus = read_wotc_skus()
+    wotc_skus = fetch_wotc_skus()
         
-    desc = input("Please enter the name of the item whose SKU you would like to lookup:\n")
+    desc = input("Please enter the name of the item whose SKU you would like to lookup. \n")
     try:
         current_sku = wotc_skus[desc]
     except KeyError:
-        print("No item found with that description")
+        print("No item found with that description.")
         return
 
     print("The current SKU for " + desc + " is: " + str(current_sku) + ".")
@@ -362,7 +324,7 @@ def lookup_sku():
     
 def update_sku():
     """Update an item's SKU."""
-    wotc_skus = read_wotc_skus()
+    wotc_skus = fetch_wotc_skus()
         
     desc = input("Please enter the name of the item whose SKU you would like to update:\n")
     try:
@@ -377,14 +339,83 @@ def update_sku():
     confirm = 'n'
     while confirm not in ['y', '', 'yes']:
         new_sku = input("Please enter the new SKU:\n")
-        confirm = input("Is " + str(new_sku) + " correct? (Enter 'y', 'yes', or nothing to confirm. Enter any other key to resubmit.")
+        confirm = input("Is " + str(new_sku) + " correct? (Enter 'y', 'yes', or nothing to confirm. Enter any other key to resubmit):\n")
 
     # Update the SKU dict
     wotc_skus[desc] = new_sku
     file = open(DICT_FILENAME, 'wb')
     pickle.dump(wotc_skus, file)
     file.close()
+
+
+def sku_manager():
+    """Helper function for various sku-related functions."""
+    command = input("Would you like to view (v) skus, update (u) a sku, lookup (l) a specific sku, or exit (any other key)? Enter the respective letter:\n").lower()
+
+    if command ==  "v":
+        display_wotc_skus()
+    elif command == "u":
+        update_sku()
+    elif command == "l":
+        lookup_sku()
+        
+
+def fetch_filter_keywords():
+    """Returns the list containing the filter keywords."""
+
+    with open(ARR_FILENAME, 'rb') as handle:
+        data = handle.read()
+        
+    return pickle.loads(data)
     
+    
+def display_filter_keywords():
+    """Prints out the filter keywords to the user."""
+
+    keywords = fetch_filter_keywords()
+    for i in range(len(keywords)):
+        print(i, keywords[i])
+
+
+def write_filter_keywords(keywords):
+    """Given a list of keywords, write that list to ARR_FILENAME."""
+
+    file = open(ARR_FILENAME, 'wb')
+    pickle.dump(keywords, file)
+    file.close()
+
+
+def delete_filter_keyword(index):
+    """Given a keyword's index, remove it from the filter keywords file."""
+    keys = fetch_filter_keywords()
+    if index < 0 or index > (len(keys) - 1):
+        print("invalid index")
+        return
+    del keys[index]
+    write_filter_keywords(keys)
+
+
+def add_filter_keyword(keyword):
+    """Given a keyword, add it to the list of filter keywords."""
+    keys = fetch_filter_keywords()
+    if keyword not in keys:
+        keys.append(keyword)
+    write_filter_keywords(keys)
+
+
+def keyword_manager():
+    """Helper function to manage various filter keyword functions."""
+    command = input("Would you like to view (v) keywords, delete (d) a keyword, add (a) a keyword, or exit (any other key)? Enter the respective letter:\n").lower()
+
+    if command == "v":
+        display_filter_keywords()
+    elif command == "d":
+        index = int(input("Please enter the index number of the keyword to delete (displayed to the left of the keyword):\n"))
+        delete_filter_keyword(index)
+    elif command == "a":
+        keyword = input("Enter the keyword you would like to add to the filter keyword list. (Case insensitive):\n")
+        add_filter_keyword(keyword)
+        
 
 def main():
     line_report_filename = ''
@@ -392,7 +423,7 @@ def main():
     store = ''
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hl:w:s:uo", ["line=", "wpn=", "store="])
+        opts, args = getopt.getopt(sys.argv[1:], "hl:w:s:uk", ["line=", "wpn=", "store="])
     except:
         print_help_info()
         sys.exit(2)
@@ -409,11 +440,11 @@ def main():
         if opt == '-h':
             print_help_info()
             sys.exit()
-        elif opt == '-u':
-            update_sku()
+        elif opt == '-k':
+            keyword_manager()
             sys.exit()
-        elif opt == '-o':
-            lookup_sku()
+        elif opt == '-u':
+            sku_manager()
             sys.exit()
         elif opt in ['-l', '--line']:
             line_report_filename = arg
@@ -429,6 +460,7 @@ def main():
         sys.exit(2)
 
     generate_report(line_report_filename, wpn_report_filename, store)
+
 
     
 if __name__ == "__main__":
