@@ -430,8 +430,6 @@ def main():
 
     # If there are no arguments, print the help and exit
     if len(opts) == 0:
-        print("HERE")
-        print(opts)
         print_help_info()
         sys.exit(2)
 
